@@ -22,6 +22,17 @@ export CFLAGS="${CFLAGS:-}"
 export CXXFLAGS="${CXXFLAGS:-}"
 export LDFLAGS="${LDFLAGS:-}"
 
+# Some build environments ship a linker that doesn't understand DWARF v5
+# (e.g. DW_FORM_strx* forms). Force DWARF v4 for compatibility.
+case " ${CFLAGS} " in
+    *" -gdwarf-"*) ;;
+    *) export CFLAGS="${CFLAGS} -gdwarf-4" ;;
+esac
+case " ${CXXFLAGS} " in
+    *" -gdwarf-"*) ;;
+    *) export CXXFLAGS="${CXXFLAGS} -gdwarf-4" ;;
+esac
+
 # Build direct broker dependency - cJSON
 # Note that other dependencies, i.e. sqlite are not yet built because they are
 # only used by plugins and not currently otherwise used.
@@ -54,30 +65,75 @@ make -C lib \
 # Build broker object files (compile all .o files without linking the binary)
 cd ${SRC}/mosquitto/src
 # Extract OBJS list from Makefile and build just those object files
-# remove mosquitto.o because it's the main entry point
-OBJS=$(make -n mosquitto 2>/dev/null | grep -o '[a-zA-Z0-9_]*\.o' | sort -u | xargs)
-for obj in $OBJS; do
-    make $obj WITH_DOCS=no WITH_TLS=yes WITH_CJSON=yes CFLAGS="$CFLAGS" LDFLAGS="$LDFLAGS" || true
-done
+# Exclude mosquitto.o because it contains main() which conflicts with libFuzzer.
+OBJS=$(make -n mosquitto 2>/dev/null | grep -o '[a-zA-Z0-9_]*\.o' | sort -u | grep -v '^mosquitto\.o$' | xargs)
 
+# Build objects (no broker binary link step)
+make -j$(nproc) ${OBJS} \
+    WITH_DOCS=no \
+    WITH_TLS=yes \
+    WITH_CJSON=yes \
+    CFLAGS="$CFLAGS -DFUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION" \
+    LDFLAGS="$LDFLAGS"
 
-# Create static library from all object files
-ar cr libmosquitto_broker.a *.o
+# Create static library from broker object files (no main())
+rm -f libmosquitto_broker.a
+# We still need a few broker globals/helpers that live in mosquitto.c (db, run,
+# flag_* and listener__set_defaults). Build a fuzz-specific object with main renamed.
+MOSQ_FUZZ_O=mosquitto_fuzz.o
+MOSQ_COMPILE_CMD=$(make -n mosquitto.o WITH_DOCS=no WITH_TLS=yes WITH_CJSON=yes \
+    CFLAGS="$CFLAGS -DFUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION" LDFLAGS="$LDFLAGS" | head -n 1)
+MOSQ_COMPILE_CMD=$(echo "$MOSQ_COMPILE_CMD" | sed -e 's/ -c / -Dmain=mosquitto_main -c /' -e 's/ -o mosquitto\.o/ -o '"$MOSQ_FUZZ_O"'/')
+eval "$MOSQ_COMPILE_CMD"
+
+ar cr libmosquitto_broker.a ${OBJS} ${MOSQ_FUZZ_O}
+ranlib libmosquitto_broker.a
 
 # 3. Compile your custom fuzzer
 # Use $LIB_FUZZING_ENGINE (provided by OSS-Fuzz) or -fsanitize=fuzzer
-# 3. Compile your custom fuzzer
 cd ${SRC}/mosquitto
 
-$CC $CFLAGS $LDFLAGS \
-    -I. \
-    -I./include \
-    -I./src \
-    -I./lib \
-    -I./deps \
-    ${SRC}/mosquitto/fuzzing/mosquitto_fuzzer.c \
-    -o $OUT/mosquitto_fuzzer \
-    $LIB_FUZZING_ENGINE \
-    ./src/libmosquitto_broker.a \
-    ./lib/libmosquitto.a \
+COMMON_INCLUDES=(
+    -I.
+    -I./include
+    -I./src
+    -I./lib
+    -I./deps
+)
+
+COMMON_LIBS=(
+    $LIB_FUZZING_ENGINE
     -lssl -lcrypto -lpthread -ldl -lcjson -lm
+)
+
+# Build all harnesses in fuzzing/ that match *_fuzzer.c
+found_harnesses=0
+for harness in ${SRC}/mosquitto/fuzzing/*_fuzzer.c; do
+    [ -e "$harness" ] || continue
+    found_harnesses=1
+    name=$(basename "$harness" .c)
+
+    # If the harness uses broker internals, link the broker object archive.
+    # Otherwise, link the public libmosquitto.a.
+    if grep -q 'mosquitto_broker_internal\.h' "$harness"; then
+        $CC $CFLAGS $LDFLAGS \
+            -DWITH_BROKER \
+            "${COMMON_INCLUDES[@]}" \
+            "$harness" \
+            -o "$OUT/$name" \
+            ./src/libmosquitto_broker.a \
+            "${COMMON_LIBS[@]}"
+    else
+        $CC $CFLAGS $LDFLAGS \
+            "${COMMON_INCLUDES[@]}" \
+            "$harness" \
+            -o "$OUT/$name" \
+            ./lib/libmosquitto.a \
+            "${COMMON_LIBS[@]}"
+    fi
+done
+
+if [ "$found_harnesses" -eq 0 ]; then
+    echo "No fuzz harnesses found in \\"${SRC}/mosquitto/fuzzing\\" (expected *_fuzzer.c)" >&2
+    exit 1
+fi
