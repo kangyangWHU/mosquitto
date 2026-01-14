@@ -1,6 +1,7 @@
 #!/bin/bash -eu
 #
-# opyright (c) 2023 Cedalo Gmb
+# Copyright (c) 2023 Cedalo GmbH
+#
 # All rights reserved. This program and the accompanying materials
 # are made available under the terms of the Eclipse Public License 2.0
 # and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -13,7 +14,6 @@
 # SPDX-License-Identifier: EPL-2.0 OR BSD-3-Clause
 #
 # Contributors:
-
 #    Roger Light - initial implementation and documentation.
 
 set -e
@@ -21,19 +21,16 @@ set -e
 # Note that sqlite3 is required as a build dep of a plugin which is not
 # currently part of fuzz testing. Once it is part of fuzz testing, sqlite will
 # need to be built statically.
-
 apt-get update && apt-get install -y \
-cmake \
-libargon2-dev \
-libedit-dev \
-liblzma-dev \
-libmicrohttpd-dev \
-libsqlite3-dev \
-libtool-bin \
-libz-dev \
-make \
-ninja-build \
-pkg-config
+	cmake \
+	libargon2-dev \
+	libedit-dev \
+	liblzma-dev \
+	libmicrohttpd-dev \
+	libsqlite3-dev \
+	libtool-bin \
+	libz-dev \
+	make \
+	ninja-build \
+	pkg-config
 git clone https://github.com/ralight/cJSON ${SRC}/cJSON
-
-fi
