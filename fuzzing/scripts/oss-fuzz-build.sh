@@ -64,10 +64,18 @@ ar cr libmosquitto_broker.a *.o
 
 # 3. Compile your custom fuzzer
 # Use $LIB_FUZZING_ENGINE (provided by OSS-Fuzz) or -fsanitize=fuzzer
+# 3. Compile your custom fuzzer
 cd ${SRC}/mosquitto
-$CC $CFLAGS $LDFLAGS -I. -I./include -I./src -I./lib \
-    ${SRC}/mosquitto/fuzzing/mosquitto_fuzzer.c -o $OUT/mosquitto_fuzzer \
+
+$CC $CFLAGS $LDFLAGS \
+    -I. \
+    -I./include \
+    -I./src \
+    -I./lib \
+    -I./deps \
+    ${SRC}/mosquitto/fuzzing/mosquitto_fuzzer.c \
+    -o $OUT/mosquitto_fuzzer \
     $LIB_FUZZING_ENGINE \
-    ./lib/libmosquitto.a \
     ./src/libmosquitto_broker.a \
+    ./lib/libmosquitto.a \
     -lssl -lcrypto -lpthread -ldl -lcjson -lm
