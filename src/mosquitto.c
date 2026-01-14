@@ -450,7 +450,7 @@ static int pid__write(void)
 	return MOSQ_ERR_SUCCESS;
 }
 
-
+#ifndef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
 int main(int argc, char *argv[])
 {
 	struct mosquitto__config config;
@@ -646,6 +646,7 @@ int main(int argc, char *argv[])
 
 	return rc;
 }
+#endif
 
 #ifdef WIN32
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow)
