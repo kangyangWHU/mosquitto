@@ -37,9 +37,17 @@ make install
 # Build broker and library static libraries
 cd ${SRC}/mosquitto
 make \
-	WITH_STATIC_LIBRARIES=yes \
-	WITH_DOCS=no \
-	WITH_FUZZING=yes \
-	WITH_EDITLINE=no \
-	WITH_HTTP_API=no \
-	-j $(nproc)
+    WITH_STATIC_LIBRARIES=yes \
+    WITH_DOCS=no \
+    WITH_TLS=yes \
+    WITH_CJSON=yes \
+    -j$(nproc)
+
+# 3. Compile your custom fuzzer
+# Use $LIB_FUZZING_ENGINE (provided by OSS-Fuzz) or -fsanitize=fuzzer
+$CC $CFLAGS -I. -I./include -I./src \
+    ${SRC}/mosquitto/fuzzing/mosquitto_fuzzer.c -o $OUT/mosquitto_fuzzer \
+    $LIB_FUZZING_ENGINE \
+    ./lib/libmosquitto.a \
+    ./src/libmosquitto_broker.a \
+    -lssl -lcrypto -lcares -lpthread -ldl
