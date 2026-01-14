@@ -54,10 +54,13 @@ make -C lib \
 # Build broker object files (compile all .o files without linking the binary)
 cd ${SRC}/mosquitto/src
 # Extract OBJS list from Makefile and build just those object files
-OBJS=$(make -n mosquitto 2>/dev/null | grep -o '[a-z_]*\.o' | sort -u | xargs)
+OBJS=$(make -n mosquitto 2>/dev/null | grep -o '[a-zA-Z0-9_]*\.o' | grep -v '^mosquitto\.o$' | sort -u | xargs)
 for obj in $OBJS; do
     make $obj WITH_DOCS=no WITH_TLS=yes WITH_CJSON=yes CFLAGS="$CFLAGS" LDFLAGS="$LDFLAGS" || true
 done
+
+# Remove mosquitto.o to avoid multiple definition of main
+rm -f mosquitto.o
 
 # Create static library from all object files
 ar cr libmosquitto_broker.a *.o
