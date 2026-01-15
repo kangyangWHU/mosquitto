@@ -45,8 +45,10 @@ make -C lib \
 	WITH_DOCS=no \
 	-j $(nproc)
 
+# Build the broker objects as a static archive for fuzzers that target broker internals.
 make -C src \
 	WITH_FUZZING=yes \
+    WITH_STATIC_LIBRARIES=yes \
 	WITH_DOCS=no \
 	-j $(nproc)
 
@@ -54,15 +56,21 @@ make -C src \
 OUT_DIR="${OUT:-.}"
 WORK_DIR="${WORK:-/tmp}"
 FUZZER_OBJ="${WORK_DIR}/mosquitto_fuzzer.o"
+PLUGIN_DEBUG_OBJ="${WORK_DIR}/plugin_debug.o"
 LIB_FUZZER_OBJ="${WORK_DIR}/mosquitto_lib_fuzzer.o"
 
 "$CC" $CFLAGS -I. -Iinclude -Isrc -Ilib -Ideps \
 	-c fuzzing/mosquitto_fuzzer.c \
 	-o "$FUZZER_OBJ"
 
+"$CC" $CFLAGS -I. -Iinclude -Isrc -Ilib -Ideps \
+	-c src/plugin_debug.c \
+	-o "$PLUGIN_DEBUG_OBJ"
+
 "$CXX" $CXXFLAGS $LDFLAGS \
 	"$FUZZER_OBJ" \
-	src/libmosquitto_broker.a \
+	"$PLUGIN_DEBUG_OBJ" \
+    src/libmosquitto_broker.a \
 	${LIB_FUZZING_ENGINE:--fsanitize=fuzzer} \
 	-fsanitize=address \
 	-lssl -lcrypto -lpthread -ldl -lrt -lm \
