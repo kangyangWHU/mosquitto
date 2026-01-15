@@ -1,57 +1,72 @@
-#include <stdint.h>
 #include <stddef.h>
-#include <string.h>
+#include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
-#include "mosquitto_internal.h"
-#include "packet_mosq.h"
-#include "read_handle.h"
+#include <string.h>
+#include <stdbool.h>
 
-int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
-    if (size < 1) return 0;
-    
-    // Allocate and initialize a mosquitto structure
-    struct mosquitto *mosq = mosquitto_new(NULL, true, NULL);
-    if (!mosq) return 0;
-    
-    mosq->in_packet.command = data[0];
-    size_t payload_size = size - 1;
+// Include project headers (absolute project paths as discovered in repository).
+// If your build environment provides different include paths you may need to adjust these.
+#include "/src/mosquitto/src/mosquitto_broker_internal.h"
 
-    if(payload_size > 0){
-        mosq->in_packet.payload = malloc(payload_size);
-        if (!mosq->in_packet.payload) {
-            mosquitto_destroy(mosq);
-            return 0;
-        }
-        memcpy(mosq->in_packet.payload, data + 1, payload_size);
+// The real struct config_recurse is defined in src/conf.c. Provide the same
+// definition here so the harness can instantiate it.
+struct config_recurse {
+    unsigned int log_dest;
+    int log_dest_set;
+    unsigned int log_type;
+    int log_type_set;
+};
+
+// The target function is defined in conf.c and may not be declared in a public header.
+// Provide the prototype here so we can call it.
+extern int config__read_file_core(struct mosquitto__config *config, bool reload,
+                                  struct config_recurse *cr, int level,
+                                  int *lineno, FILE *fptr, char **buf, int *buflen);
+
+int LLVMFuzzerTestOneInput(const uint8_t *Data, size_t Size)
+{
+    // Create a temporary file and write the fuzzer input into it.
+    // Use tmpfile() to avoid depending on filenames on disk.
+    FILE *f = tmpfile();
+    if(!f){
+        // tmpfile may fail in some sandboxed environments; bail out gracefully.
+        return 0;
     }
 
-    mosq->in_packet.remaining_length = payload_size;
-    mosq->in_packet.remaining_count = 0;
-    mosq->in_packet.pos = 0;
-    mosq->in_packet.to_process = payload_size;
-    
-    // Set some basic state to avoid crashes
-    mosq->sock = -1;  // Invalid socket
-    mosq->state = mosq_cs_connected;  // Pretend we're connected
-    
-    // Process the packet
-    handle__packet(mosq);
-    
-    // Cleanup
-    // mosquitto_destroy frees `in_packet` logic too?
-    // mosquitto_destroy calls mosquitto__destroy calls packet__cleanup_all
-    // packet__cleanup_all frees in_packet.payload if set?
-    
-    // Let's check packet__cleanup in packet_mosq.c
-    // void packet__cleanup(struct mosquitto__packet *packet) {
-    //    if(packet->payload) free(packet->payload);
-    //    packet->payload = NULL;
-    // }
-    
-    // mosquitto__destroy -> packet__cleanup(&mosq->in_packet);
-    
-    // So mosquitto_destroy should free the payload I allocated.
-    mosquitto_destroy(mosq);
-    
+    if(Size > 0){
+        size_t written = fwrite(Data, 1, Size, f);
+        (void)written; // ignore; we still try to parse whatever was written
+    }
+    rewind(f);
+
+    // Per-iteration config: initialize, use, then cleanup to avoid accumulating state.
+    struct mosquitto__config config;
+    config__init(&config);
+
+    struct config_recurse cr;
+    memset(&cr, 0, sizeof(cr));
+
+    int lineno = 0;
+    int buflen = 1000;
+    char *buf = (char *)malloc((size_t)buflen);
+    if(!buf){
+        // cleanup and return if allocation fails
+        config__cleanup(&config);
+        fclose(f);
+        return 0;
+    }
+    // Ensure buffer is an empty string so fgets_extending can work with it.
+    buf[0] = '\0';
+
+    // Call the target function. We pass reload = false to mimic normal reading.
+    // level = 0 is appropriate for a top-level parse.
+    (void)config__read_file_core(&config, false, &cr, 0, &lineno, f, &buf, &buflen);
+
+    // Free per-iteration resources.
+    free(buf);
+    config__cleanup(&config);
+    fclose(f);
+
     return 0;
 }

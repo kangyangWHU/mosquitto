@@ -2,7 +2,11 @@ include ../config.mk
 
 .PHONY: all install uninstall clean reallyclean
 
+ifeq ($(WITH_ASAN),yes)
+all : libmosquitto_broker.a
+else
 all : mosquitto
+endif
 
 OBJS=	mosquitto.o \
 		alias_mosq.o \
@@ -83,6 +87,9 @@ OBJS=	mosquitto.o \
 
 mosquitto : ${OBJS}
 	${CROSS_COMPILE}${CC} ${BROKER_LDFLAGS} $^ -o $@ $(BROKER_LDADD)
+
+libmosquitto_broker.a : ${OBJS}
+	${CROSS_COMPILE}ar rcs $@ $^
 
 mosquitto.o : mosquitto.c mosquitto_broker_internal.h
 	${CROSS_COMPILE}${CC} $(BROKER_CPPFLAGS) $(BROKER_CFLAGS) -c $< -o $@
@@ -331,7 +338,7 @@ uninstall :
 	-rm -f "${DESTDIR}${prefix}/include/mosquitto_plugin.h"
 
 clean :
-	-rm -f *.o mosquitto *.gcda *.gcno
+	-rm -f *.o mosquitto libmosquitto_broker.a *.gcda *.gcno
 
 reallyclean : clean
 	-rm -rf *.orig *.db
