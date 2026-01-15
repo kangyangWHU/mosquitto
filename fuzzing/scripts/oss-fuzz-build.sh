@@ -106,6 +106,15 @@ COMMON_LIBS=(
     -lssl -lcrypto -lpthread -ldl -lcjson -lm
 )
 
+# Some broker-internal fuzz harnesses call mosquitto_lib_init(), but linking the
+# full libmosquitto.a would duplicate objects already present in
+# libmosquitto_broker.a. Provide a fuzz-only implementation instead.
+FUZZ_LIBINIT_O=mosquitto_fuzz_lib_init.o
+$CC $CFLAGS $LDFLAGS \
+    "${COMMON_INCLUDES[@]}" \
+    -c ./fuzzing/mosquitto_fuzz_lib_init.c \
+    -o "$FUZZ_LIBINIT_O"
+
 # Build all harnesses in fuzzing/ that match *_fuzzer.c
 found_harnesses=0
 for harness in ${SRC}/mosquitto/fuzzing/*_fuzzer.c; do
@@ -122,6 +131,7 @@ for harness in ${SRC}/mosquitto/fuzzing/*_fuzzer.c; do
             "$harness" \
             -o "$OUT/$name" \
             ./src/libmosquitto_broker.a \
+            "$FUZZ_LIBINIT_O" \
             "${COMMON_LIBS[@]}"
     else
         $CC $CFLAGS $LDFLAGS \
