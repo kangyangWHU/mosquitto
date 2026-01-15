@@ -115,6 +115,16 @@ $CC $CFLAGS $LDFLAGS \
     -c ./fuzzing/mosquitto_fuzz_lib_init.c \
     -o "$FUZZ_LIBINIT_O"
 
+# Build and link a real legacy auth plugin implementation.
+# The broker normally loads these symbols via dlopen/dlsym, but fuzz harnesses
+# may reference them directly (e.g. mosquitto_auth_acl_check()).
+FUZZ_AUTH_PLUGIN_O=ossfuzz_auth_plugin.o
+$CC $CFLAGS $LDFLAGS \
+    -DWITH_BROKER \
+    "${COMMON_INCLUDES[@]}" \
+    -c ./src/plugin_defer.c \
+    -o "$FUZZ_AUTH_PLUGIN_O"
+
 # Build all harnesses in fuzzing/ that match *_fuzzer.c
 found_harnesses=0
 for harness in ${SRC}/mosquitto/fuzzing/*_fuzzer.c; do
@@ -122,9 +132,9 @@ for harness in ${SRC}/mosquitto/fuzzing/*_fuzzer.c; do
     found_harnesses=1
     name=$(basename "$harness" .c)
 
-    # If the harness uses broker internals, link the broker object archive.
+    # If the harness uses broker headers, link the broker object archive.
     # Otherwise, link the public libmosquitto.a.
-    if grep -q 'mosquitto_broker_internal\.h' "$harness"; then
+    if grep -Eq 'mosquitto_broker_internal\.h|mosquitto_broker\.h|mosquitto_plugin\.h|mosquitto_auth_' "$harness"; then
         $CC $CFLAGS $LDFLAGS \
             -DWITH_BROKER \
             "${COMMON_INCLUDES[@]}" \
@@ -132,6 +142,7 @@ for harness in ${SRC}/mosquitto/fuzzing/*_fuzzer.c; do
             -o "$OUT/$name" \
             ./src/libmosquitto_broker.a \
             "$FUZZ_LIBINIT_O" \
+            "$FUZZ_AUTH_PLUGIN_O" \
             "${COMMON_LIBS[@]}"
     else
         $CC $CFLAGS $LDFLAGS \
