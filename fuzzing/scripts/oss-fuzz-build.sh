@@ -77,7 +77,7 @@ LIB_FUZZER_OBJ="${WORK_DIR}/mosquitto_lib_fuzzer.o"
 	${LIB_FUZZING_ENGINE:--fsanitize=fuzzer} \
 	-fsanitize=address \
 	-lssl -lcrypto -lpthread -ldl -lrt -lm -lcjson \
-	-o "${OUT_DIR}/mosquitto_broker_fuzzer"
+	-o "${OUT_DIR}/mosquitto_fuzzer"
 
 
 # Fuzzer 2: only src fuzzer
