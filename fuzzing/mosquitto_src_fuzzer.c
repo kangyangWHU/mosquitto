@@ -13,7 +13,7 @@
 /* Fuzzer entry point */
 extern int LLVMFuzzerTestOneInput(const uint8_t *Data, size_t Size)
 {
-
+    
 
     /* Always return 0 as required by libFuzzer contract. */
     return 0;

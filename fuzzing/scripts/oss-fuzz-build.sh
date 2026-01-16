@@ -60,7 +60,7 @@ FUZZER_OBJ="${WORK_DIR}/mosquitto_fuzzer.o"
 PLUGIN_DEBUG_OBJ="${WORK_DIR}/plugin_debug.o"
 LIB_FUZZER_OBJ="${WORK_DIR}/mosquitto_lib_fuzzer.o"
 
-"$CC" $CFLAGS -I. -Iinclude -Isrc -Ilib -Ideps \
+"$CC" $CFLAGS -DWITH_BROKER -DWITH_BRIDGE -I. -Iinclude -Isrc -Ilib -Ideps \
 	-c fuzzing/mosquitto_fuzzer.c \
 	-o "$FUZZER_OBJ"
 
@@ -68,6 +68,7 @@ LIB_FUZZER_OBJ="${WORK_DIR}/mosquitto_lib_fuzzer.o"
 	-c src/plugin_debug.c \
 	-o "$PLUGIN_DEBUG_OBJ"
 
+# Fuzzer 1: Broker fuzzer - link both libraries, linker will resolve from broker first
 "$CXX" $CXXFLAGS $LDFLAGS \
 	"$FUZZER_OBJ" \
 	"$PLUGIN_DEBUG_OBJ" \
@@ -75,19 +76,34 @@ LIB_FUZZER_OBJ="${WORK_DIR}/mosquitto_lib_fuzzer.o"
 	lib/libmosquitto.a \
 	${LIB_FUZZING_ENGINE:--fsanitize=fuzzer} \
 	-fsanitize=address \
+	-lssl -lcrypto -lpthread -ldl -lrt -lm -lcjson \
+	-o "${OUT_DIR}/mosquitto_broker_fuzzer"
+
+
+# Fuzzer 2: only src fuzzer
+"$CC" $CFLAGS -I. -Iinclude -Ilib -Isrc -Ideps \
+	-c fuzzing/mosquitto_src_fuzzer.c \
+	-o "$LIB_FUZZER_OBJ"
+
+"$CXX" $CXXFLAGS $LDFLAGS \
+	"$LIB_FUZZER_OBJ" \
+	src/libmosquitto_broker.a \
+	${LIB_FUZZING_ENGINE:--fsanitize=fuzzer} \
+	-fsanitize=address \
 	-lssl -lcrypto -lpthread -ldl -lrt -lm \
-	-o "${OUT_DIR}/mosquitto_fuzzer"
+	-o "${OUT_DIR}/mosquitto_src_fuzzer"
 
-# "$CC" $CFLAGS -I. -Iinclude -Isrc -Ilib -Ideps \
-# 	-c fuzzing/mosquitto_lib_fuzzer.c \
-# 	-o "$LIB_FUZZER_OBJ"
 
-# "$CXX" $CXXFLAGS  $LDFLAGS \
-# 	"$LIB_FUZZER_OBJ" \
-# 	lib/libmosquitto.a \
-# 	${LIB_FUZZING_ENGINE:--fsanitize=fuzzer} \
-# 	-fsanitize=address \
-# 	-lssl -lcrypto -lpthread -ldl -lrt -lm \
-# 	-o "${OUT_DIR}/mosquitto_lib_fuzzer"
+# Fuzzer 2: Client library fuzzer
+"$CC" $CFLAGS -I. -Iinclude -Isrc -Ilib -Ideps \
+	-c fuzzing/mosquitto_lib_fuzzer.c \
+	-o "$LIB_FUZZER_OBJ"
 
+"$CXX" $CXXFLAGS $LDFLAGS \
+	"$LIB_FUZZER_OBJ" \
+	lib/libmosquitto.a \
+	${LIB_FUZZING_ENGINE:--fsanitize=fuzzer} \
+	-fsanitize=address \
+	-lssl -lcrypto -lpthread -ldl -lrt -lm \
+	-o "${OUT_DIR}/mosquitto_lib_fuzzer"
 
